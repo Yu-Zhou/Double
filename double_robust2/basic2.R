@@ -6,7 +6,7 @@ library(Matrix)
 library(lpSolve)
 Mean_Function <- function(x1,x2,a)
 {
-  y = 1 + x1 + x2 + a*(3-2.5*x1-2.5*x2) + sigma*(1+a*(2++x1+2*x2))*rnorm(n,0,1)
+  y = exp( 0.3*(1+x1+x2)+0.3*a*(x1+x2-1)) + sigma*(2+0.8*a*((x1+x2)>1) )*rnorm(n,0,1)
   y
 }
 
@@ -49,7 +49,7 @@ Mreg2 <- function(x,y,a,eta){
   predict(reg.lm,newdata)
 }
 
-Qaunt_Est <- function(eta,x,y,a,prob,tau){
+Quant_Est <- function(eta,x,y,a,prob,tau){
   #quantile estimator
   g <- as.numeric( I(x %*% eta > 0))
   c <- a*g+(1-a)*(1-g)
@@ -59,7 +59,7 @@ Qaunt_Est <- function(eta,x,y,a,prob,tau){
   coefficients(model)[1]
 }
 
-### for R_Qaunt_Est###
+### for R_Quant_Est###
 Betahat<- function(tau, sol){ # The solution b(tau_i) 
   #prevails from tau_i to tau_i+1
   Taus <-sol[1,]
@@ -73,7 +73,7 @@ Test <- function(arg1,tau,qrwts.y,qrwts.a,y,y.a){
          +sum(qrwts.a * Check(tau,(y.a - arg1)) ))
 }
 
-R_Qaunt_Est <- function(eta,x,y,a,prob,tau,process_0,process_1){
+R_Quant_Est <- function(eta,x,y,a,prob,tau, y.a.0, y.a.1){
   #quantile estimator
   g <- as.numeric( I(x %*% eta > 0))
   c <- a*g+(1-a)*(1-g)
@@ -81,21 +81,13 @@ R_Qaunt_Est <- function(eta,x,y,a,prob,tau,process_0,process_1){
   qrwts.y <- c*wts
   qrwts.a <- 1- qrwts.y
   
-  u0 <- runif(n)
-  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
-  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
-  
-  u1 <- runif(n)
-  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
-  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
- 
-   y.a <- rep(0,n)
-   for (i in 1:n){
-     y.a[i] <- g[i]*x[i,]%*%beta1[,i] + (1-g[i])*x[i,]%*%beta0[,i]
-   }
+  y.a <- rep(0,n)#####  MARK
+  for (i in 1:n){
+     y.a[i] <- g[i]*y.a.1[i] + (1-g[i])*y.a.0[i,]
+  }
     
-  xleft = -1.3; #need modify
-  xright = 5.2;
+  xleft = min(y); #need modify
+  xright = max(y);
   phi = 0.34
   while (xright - xleft > 10^(-5)){
     x1=phi*xright+(1-phi)*xleft
@@ -120,7 +112,7 @@ Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   nvars<-length(sq) 
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
   
-  est<-genoud(fn=Qaunt_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,tau=tau,print.level=p_level,max=TRUE,pop.size=pop.size,wait.generations=it.num,
+  est<-genoud(fn=Quant_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,tau=tau,print.level=p_level,max=TRUE,pop.size=pop.size,wait.generations=it.num,
               gradient.check=FALSE, BFGS=FALSE,P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,Domains=Domains,starting.values=sq,
               hard.generation.limit=hard_limit,solution.tolerance=0.0001,optim.method="Nelder-Mead")
   
@@ -129,9 +121,9 @@ Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  #perf_est_10   <- R_Qaunt_Est(eta,x,y,a,prob, .1, rqp0 , rqp1)
-  perf_est_20   <- R_Qaunt_Est(eta,x,y,a,prob, .2, rqp0 , rqp1)
-  perf_est_50   <- R_Qaunt_Est(eta,x,y,a,prob, .50, rqp0 , rqp1)
+  
+  perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
+  perf_est_50   <- Quant_Est(eta,x,y,a,prob, .50)
   perf  <- c(perf_est_mean,   perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
@@ -148,12 +140,22 @@ R_Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   data1 <- data[a==1,]
   rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
   rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  u0 <- runif(n);u1 <- runif(n)
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
+  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
+  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
+  for (i in 1:n){
+    y.a.1[i] <- x[i,]%*%beta1[,i]
+    y.a.0[i] <- x[i,]%*%beta0[,i]
+  }
   #
   nvars<-length(sq) 
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
   
-  est<-genoud(fn=R_Qaunt_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,tau=tau,
-              process_0=rqp0,process_1=rqp1,
+  est<-genoud(fn=R_Quant_Est,nvars=nvars,
+              x=x,y=y,a=a,prob=prob,tau=tau,y.a.0=y.a.0,y.a.1=y.a.1,
               max=TRUE,print.level=p_level,pop.size=pop.size,
               wait.generations=it.num,gradient.check=FALSE, BFGS=FALSE,
               P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,
@@ -167,9 +169,8 @@ R_Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   
   #estimate mean , .2 quantile and .5 quantile
   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  #perf_est_10   <- R_Qaunt_Est(eta,x,y,a,prob, .1, rqp0 , rqp1)
-  perf_est_20   <- R_Qaunt_Est(eta,x,y,a,prob, .2, rqp0 , rqp1)
-  perf_est_50   <- R_Qaunt_Est(eta,x,y,a,prob, .5, rqp0 , rqp1)
+  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
   perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
@@ -183,8 +184,8 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
   data <- data.frame(Y=y,X1=x[,2],X2=x[,3])
   data0 <- data[a==0,] 
   data1 <- data[a==1,]
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2,)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  #rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2,)$sol  # quantreg process
+  #rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
   
   nvars<-length(sq)
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
@@ -192,7 +193,19 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
   est<-genoud(fn=Mean_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,print.level=p_level,max=TRUE,pop.size=pop.size,wait.generations=it.num,gradient.check=FALSE,
               BFGS=FALSE,P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,Domains=Domains,starting.values=sq,hard.generation.limit=hard_limit
               ,solution.tolerance=0.0001,optim.method="Nelder-Mead")
-  
+  #########  for evaluating, calculate robust quantile
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  u0 <- runif(n);u1 <- runif(n)
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
+  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
+  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
+  for (i in 1:n){
+    y.a.1[i] <- x[i,]%*%beta1[,i]
+    y.a.0[i] <- x[i,]%*%beta0[,i]
+  }
   
   #########  estimated  eta ####################
   eta<-est$par
@@ -200,9 +213,9 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
   hatQ<-est$value
   
   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  #perf_est_10   <- R_Qaunt_Est(eta,x,y,a,prob, .1, rqp0 , rqp1)
-  perf_est_20   <- R_Qaunt_Est(eta,x,y,a,prob, .2, rqp0 , rqp1)
-  perf_est_50   <- R_Qaunt_Est(eta,x,y,a,prob, .5, rqp0 , rqp1)
+  #R_Quant_Est(eta,x,y,a,prob,tau, y.a.0, y.a.1)  syntax
+  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
   perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
@@ -216,8 +229,6 @@ R_Mestimate <- function(x,y,a,prob,p_level,hard_limit=FALSE)   # robust estimato
   data <- data.frame(Y=y,X1=x[,2],X2=x[,3])
   data0 <- data[a==0,]
   data1 <- data[a==1,]
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
   
   nvars<-length(sq)
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
@@ -226,6 +237,19 @@ R_Mestimate <- function(x,y,a,prob,p_level,hard_limit=FALSE)   # robust estimato
               BFGS=FALSE,P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,Domains=Domains,starting.values=sq,hard.generation.limit=hard_limit
               ,solution.tolerance=0.0001,optim.method="Nelder-Mead")
   
+  #########  for evaluating, calculate robust quantile
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  u0 <- runif(n);u1 <- runif(n)
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
+  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
+  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
+  for (i in 1:n){
+    y.a.1[i] <- x[i,]%*%beta1[,i]
+    y.a.0[i] <- x[i,]%*%beta0[,i]
+  }
   
   #########  estimated  eta ####################
   eta<-est$par
@@ -233,9 +257,8 @@ R_Mestimate <- function(x,y,a,prob,p_level,hard_limit=FALSE)   # robust estimato
   hatQ<-est$value
   
   perf_est_mean <- Mean_est(eta,x,y,a,prob)
-  #perf_est_10   <- R_Qaunt_Est(eta,x,y,a,prob, .1, rqp0 , rqp1)
-  perf_est_20   <- R_Qaunt_Est(eta,x,y,a,prob, .20, rqp0 , rqp1)
-  perf_est_50   <- R_Qaunt_Est(eta,x,y,a,prob, .5, rqp0 , rqp1)
+  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
   perf  <- c(perf_est_mean,    perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
@@ -257,7 +280,7 @@ Qestimate_Pop<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   nvars<-length(sq) 
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
   
-  est<-genoud(fn=Qaunt_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,tau=tau,print.level=p_level,max=TRUE,pop.size=pop.size,wait.generations=it.num,
+  est<-genoud(fn=Quant_Est,nvars=nvars,x=x,y=y,a=a,prob=prob,tau=tau,print.level=p_level,max=TRUE,pop.size=pop.size,wait.generations=it.num,
               gradient.check=FALSE, BFGS=FALSE,P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,Domains=Domains,starting.values=sq,
               hard.generation.limit=hard_limit,solution.tolerance=0.0001,optim.method="Nelder-Mead")
   
@@ -265,11 +288,10 @@ Qestimate_Pop<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   eta<-est$par
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
-  
+  #eta,x,y,a,prob,tau
   perf_est_mean <- Mean_est(eta,x,y,a,prob)
-  #perf_est_10   <- R_Qaunt_Est(eta,x,y,a,prob, .1, rqp0 , rqp1)
-  perf_est_20   <- R_Qaunt_Est(eta,x,y,a,prob, .2, rqp0 , rqp1)
-  perf_est_50   <- R_Qaunt_Est(eta,x,y,a,prob, .5, rqp0 , rqp1)
+  perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
+  perf_est_50   <- Quant_Est(eta,x,y,a,prob, .5)
   perf  <- c(perf_est_mean,  perf_est_10,  perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
