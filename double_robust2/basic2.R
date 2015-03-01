@@ -4,6 +4,7 @@ library(xtable)
 library(faraway)
 library(Matrix)
 library(lpSolve)
+library(parallel)
 Mean_Function <- function(x1,x2,a)
 {
   y = exp( 0.3*(1+x1+x2)+0.3*a*(x1+x2-1)) + sigma*(2+0.8*a*((x1+x2)>1) )*rnorm(n,0,1)
@@ -83,11 +84,11 @@ R_Quant_Est <- function(eta,x,y,a,prob,tau, y.a.0, y.a.1){
   
   y.a <- rep(0,n)#####  MARK
   for (i in 1:n){
-     y.a[i] <- g[i]*y.a.1[i] + (1-g[i])*y.a.0[i,]
+     y.a[i] <- g[i]*y.a.1[i] + (1-g[i])*y.a.0[i]
   }
     
-  xleft = min(y); #need modify
-  xright = max(y);
+  xleft = min(min(y),min(y.a))
+  xright = max(max(y),max(y.a))
   phi = 0.34
   while (xright - xleft > 10^(-5)){
     x1=phi*xright+(1-phi)*xleft
@@ -106,8 +107,8 @@ Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   data <- data.frame(Y=y,X1=x[,2],X2=x[,3])
   data0 <- data[a==0,]
   data1 <- data[a==1,]
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg rqp
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg rqp
   
   nvars<-length(sq) 
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
@@ -138,13 +139,13 @@ R_Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   data <- data.frame(Y=y,X1=x[,2],X2=x[,3])
   data0 <- data[a==0,]
   data1 <- data[a==1,]
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg rqp
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg rqp
   u0 <- runif(n);u1 <- runif(n)
-  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
-  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
-  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
-  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol =rqp0))
+  beta0 <-rqp0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol =rqp1))
+  beta1 <-rqp1[4:(3+dim(x)[2]) , betahat_index_1 ]
   y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
   for (i in 1:n){
     y.a.1[i] <- x[i,]%*%beta1[,i]
@@ -184,8 +185,8 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
   data <- data.frame(Y=y,X1=x[,2],X2=x[,3])
   data0 <- data[a==0,] 
   data1 <- data[a==1,]
-  #rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2,)$sol  # quantreg process
-  #rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  #rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2,)$sol  # quantreg rqp
+  #rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg rqp
   
   nvars<-length(sq)
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
@@ -194,13 +195,13 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
               BFGS=FALSE,P1=50, P2=50, P3=10, P4=50, P5=50, P6=50, P7=50, P8=50, P9=0,Domains=Domains,starting.values=sq,hard.generation.limit=hard_limit
               ,solution.tolerance=0.0001,optim.method="Nelder-Mead")
   #########  for evaluating, calculate robust quantile
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg rqp
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg rqp
   u0 <- runif(n);u1 <- runif(n)
-  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
-  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
-  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
-  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol=rqp0))
+  beta0 <-rqp0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol =rqp1))
+  beta1 <-rqp1[4:(3+dim(x)[2]) , betahat_index_1 ]
   y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
   for (i in 1:n){
     y.a.1[i] <- x[i,]%*%beta1[,i]
@@ -238,13 +239,13 @@ R_Mestimate <- function(x,y,a,prob,p_level,hard_limit=FALSE)   # robust estimato
               ,solution.tolerance=0.0001,optim.method="Nelder-Mead")
   
   #########  for evaluating, calculate robust quantile
-  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg process
+  rqp0 <- rq(Y~1+X1+X2,data=data0,tau=2)$sol  # quantreg rqp
+  rqp1 <- rq(Y~1+X1+X2,data=data1,tau=2)$sol  # quantreg rqp
   u0 <- runif(n);u1 <- runif(n)
-  betahat_index_0 <- unlist(lapply(u0,Betahat,sol= process_0))
-  beta0 <- process_0[4:(3+dim(x)[2]) , betahat_index_0 ]
-  betahat_index_1 <- unlist(lapply(u1,Betahat,sol = process_1))
-  beta1 <- process_1[4:(3+dim(x)[2]) , betahat_index_1 ]
+  betahat_index_0 <- unlist(lapply(u0,Betahat,sol=rqp0))
+  beta0 <-rqp0[4:(3+dim(x)[2]) , betahat_index_0 ]
+  betahat_index_1 <- unlist(lapply(u1,Betahat,sol =rqp1))
+  beta1 <-rqp1[4:(3+dim(x)[2]) , betahat_index_1 ]
   y.a.1 <- rep(0,n);   y.a.0 <- rep(0,n)#####  MARK
   for (i in 1:n){
     y.a.1[i] <- x[i,]%*%beta1[,i]
@@ -274,8 +275,8 @@ Qestimate_Pop<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   sdata0 <- data0[sample(nrow(data0),10^4),]
   data1 <- data[a==1,]
   sdata1 <- data1[sample(nrow(data1),10^4),]
-  rqp0 <- rq(Y~1+X1+X2,data = sdata0,tau=2)$sol  # quantreg process
-  rqp1 <- rq(Y~1+X1+X2,data = sdata1,tau=2)$sol  # quantreg process
+  rqp0 <- rq(Y~1+X1+X2,data = sdata0,tau=2)$sol  # quantreg rqp
+  rqp1 <- rq(Y~1+X1+X2,data = sdata1,tau=2)$sol  # quantreg rqp
   
   nvars<-length(sq) 
   Domains<-cbind(rep(-1,nvars),rep(1,nvars))
