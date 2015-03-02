@@ -5,11 +5,25 @@ library(faraway)
 library(Matrix)
 library(lpSolve)
 library(parallel)
+library(car)
 Mean_Function <- function(x1,x2,a)
 {
-  y = exp( 0.3*(1+x1+x2)+0.3*a*(x1+x2-1)) + sigma*(2+0.8*a*((x1+x2)>1) )*rnorm(n,0,1)
+  y = exp( 0.5*(1+x1+x2+a*(2*x1+x2-1))) + 
+      sigma*( 0.5+0.5*a*as.integer((x1+x2)>1) + 0.5*a*as.integer((x1+x2)>1 &(x1+2*x2> 1))) *rnorm(n,0,1)
   y
 }
+
+Perf_for_eta <- function(eta,x,y,a){
+  g<-as.numeric(I(x%*%eta>0))
+  x1=x[,2]
+  x2=x[,3]
+  num = length(x1)
+  y = exp( 0.5*(1+x1+x2+a*(2*x1+x2-1))) + 
+    sigma*( 0.5+0.5*a*as.integer((x1+x2)>1) + 0.5*a*as.integer((x1+x2)>1 &(x1+2*x2> 1))) *rnorm(n,0,1)
+  return(c(mean(y),quantile(y,0.2), quantile(y,0.5)))
+}
+
+
 
 Mean_Est<-function(eta,x,y,a,prob)
 {
@@ -31,24 +45,6 @@ R_Mean_Est <- function(eta,x,y,a,prob)
   val
 }
 
-Mreg <- function(x,y,a,eta){
-  g<-as.numeric(I(x%*%eta>0))
-  x1 <-x[,2]
-  x2 <-x[,3]
-  reg.lm <- lm(y~x1*x2 + I(x1^2) + I(x2^2) +a*(x1+x2) )
-  newdata <- data.frame(x1,x2,a=g)
-  predict(reg.lm,newdata)
-}
-
-Mreg2 <- function(x,y,a,eta){
-  g<-as.numeric(I(x%*%eta>0))
-  x1 <-x[,2]
-  x2 <-x[,3]
-  
-  reg.lm <- lm(y~a*(x1*x2) )
-  newdata <- data.frame(x1,x2,a=g)
-  predict(reg.lm,newdata)
-}
 
 Quant_Est <- function(eta,x,y,a,prob,tau){
   #quantile estimator
@@ -94,8 +90,8 @@ R_Quant_Est <- function(eta,x,y,a,prob,tau, y.a.0, y.a.1){
     x1=phi*xright+(1-phi)*xleft
     x2=phi*xleft+(1-phi)*xright
     if(Test(x1,tau,qrwts.y,qrwts.a,y,y.a) >  Test(x2,tau,qrwts.y,qrwts.a,y,y.a) )  
-      xleft = x1
-    else
+      {xleft = x1
+    } else
       xright = x2
   }
   (xleft + xright) / 2
@@ -119,13 +115,15 @@ Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   
   #########  estimated  eta ####################
   eta<-est$par
+  if (prod(eta==c(0,0,0))==1) return(c(rep(NA,7)))
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
-  perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  
-  perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
-  perf_est_50   <- Quant_Est(eta,x,y,a,prob, .50)
-  perf  <- c(perf_est_mean,   perf_est_20, perf_est_50)
+  perf<-Perf_for_eta(eta,x,y,a)
+#   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
+#   
+#   perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
+#   perf_est_50   <- Quant_Est(eta,x,y,a,prob, .50)
+#   perf  <- c(perf_est_mean,   perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
   names(summary)<-c(sum_names,"mean","q20","q50")
@@ -165,14 +163,16 @@ R_Qestimate<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   
   #########  estimated  eta ####################
   eta<-est$par
+  if (prod(eta==c(0,0,0))==1) return(c(rep(NA,7)))
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
   
   #estimate mean , .2 quantile and .5 quantile
-  perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
-  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
-  perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
+  perf<-Perf_for_eta(eta,x,y,a)
+#   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
+#   perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+#   perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
+#   perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
   names(summary)<-c(sum_names,"mean","q20","q50")
@@ -210,15 +210,16 @@ Mestimate<-function(x,y,a,prob,p_level,hard_limit=FALSE)
   
   #########  estimated  eta ####################
   eta<-est$par
+  if (prod(eta==c(0,0,0))==1) return(c(rep(NA,7)))
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
-  
-  perf_est_mean <- Mean_Est(eta,x,y,a,prob)
-  #R_Quant_Est(eta,x,y,a,prob,tau, y.a.0, y.a.1)  syntax
-  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
-  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
-  perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
-  
+  perf<-Perf_for_eta(eta,x,y,a)
+#   perf_est_mean <- Mean_Est(eta,x,y,a,prob)
+#   #R_Quant_Est(eta,x,y,a,prob,tau, y.a.0, y.a.1)  syntax
+#   perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+#   perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
+#   perf  <- c(perf_est_mean,  perf_est_20, perf_est_50)
+#   
   summary<-c(eta,hatQ,perf)
   names(summary)<-c(sum_names,"mean","q20","q50")
   
@@ -254,14 +255,15 @@ R_Mestimate <- function(x,y,a,prob,p_level,hard_limit=FALSE)   # robust estimato
   
   #########  estimated  eta ####################
   eta<-est$par
+  if (prod(eta==c(0,0,0))==1) return(c(rep(NA,7)))
   eta<-eta/sqrt(sum(eta^2)) 
   hatQ<-est$value
-  
-  perf_est_mean <- Mean_est(eta,x,y,a,prob)
-  perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
-  perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
-  perf  <- c(perf_est_mean,    perf_est_20, perf_est_50)
-  
+  perf<-Perf_for_eta(eta,x,y,a)
+#   perf_est_mean <- Mean_est(eta,x,y,a,prob)
+#   perf_est_20   <- R_Quant_Est(eta,x,y,a,prob, .2, y.a.0 , y.a.1)
+#   perf_est_50   <- R_Quant_Est(eta,x,y,a,prob, .5, y.a.0 , y.a.1)
+#   perf  <- c(perf_est_mean,    perf_est_20, perf_est_50)
+#   
   summary<-c(eta,hatQ,perf)
   names(summary)<-c(sum_names,"mean","q20","q50")
   
@@ -287,13 +289,15 @@ Qestimate_Pop<-function(x,y,a,prob,tau,p_level,hard_limit=FALSE)
   
   #########  estimated  eta ####################
   eta<-est$par
+  if (prod(eta==c(0,0,0))==1) return(c(rep(NA,7)))
   eta<-eta/sqrt(sum(eta^2))
   hatQ<-est$value
   #eta,x,y,a,prob,tau
-  perf_est_mean <- Mean_est(eta,x,y,a,prob)
-  perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
-  perf_est_50   <- Quant_Est(eta,x,y,a,prob, .5)
-  perf  <- c(perf_est_mean,  perf_est_10,  perf_est_20, perf_est_50)
+  perf<-Perf_for_eta(eta,x,y,a)
+#   perf_est_mean <- Mean_est(eta,x,y,a,prob)
+#   perf_est_20   <- Quant_Est(eta,x,y,a,prob, .2)
+#   perf_est_50   <- Quant_Est(eta,x,y,a,prob, .5)
+#   perf  <- c(perf_est_mean,  perf_est_10,  perf_est_20, perf_est_50)
   
   summary<-c(eta,hatQ,perf)
   names(summary)<-c(sum_names,"mean","q20","q50")
